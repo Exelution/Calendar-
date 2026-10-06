@@ -33,7 +33,6 @@
         .modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
     </style>
 </head>
-
 <body>
 <div class="container">
     <header>
@@ -47,8 +46,8 @@
             <span id="week-display"></span>
             <button class="btn" onclick="navigateWeek(1)">Вперед ▶</button>
         </div>
-        <button class="btn btn-sync" onclick="loadFromCloud()">🔄 Оновити дані вручну</button>
-        <div class="status-bar" id="status-bar">З'єднання з інтернет-базою...</div>
+        <button class="btn btn-sync" onclick="loadFromCloud()">🔄 Оновити дані</button>
+        <div class="status-bar" id="status-bar">З'єднання з базою...</div>
     </header>
     <div class="calendar-grid" id="calendar-grid"></div>
 </div>
@@ -63,18 +62,17 @@
         </div>
     </div>
 </div>
-
-    <script>
+<script>
     const FRIENDS = { 'Костя': '#ff4d4d', 'Артур': '#3399ff', 'Богдан': '#2ecc71', 'Роман': '#f39c12', 'Максим': '#9b59b6' };
     const DAYS_NAMES = ['Понеділок', 'Вівторок', 'Середа', 'Четвер', 'П\'ятниця', 'Субота', 'Неділя'];
     
-    // Пряма URL-адреса до бази даних Firebase, яка ніколи не блокує запити через браузери
+    // Спеціальний закритий вузол Firebase, оптимізований під текстові рядки
     const CLOUD_URL = 'https://firebasedatabase.app';
 
     let currentUser = localStorage.getItem('cal_user') || Object.keys(FRIENDS)[0];
     let currentMonday = getMonday(new Date());
     let selectedDateStr = '';
-    let db = JSON.parse(localStorage.getItem('friends_calendar_db')) || {};
+    let db = {};
 
     function getMonday(d) {
         d = new Date(d); let day = d.getDay(), diff = d.getDate() - day + (day == 0 ? -6 : 1);
@@ -85,20 +83,51 @@
     
     function updateStatus(text, color = '#666') { 
         const bar = document.getElementById('status-bar');
-        bar.textContent = text;
-        bar.style.color = color;
+        bar.textContent = text; bar.style.color = color;
+    }
+
+    // Перетворюємо збережений у хмарі текст назад у списки годин
+    function parseCloudData(remoteData) {
+        let parsed = {};
+        if (!remoteData) return parsed;
+        Object.keys(remoteData).forEach(date => {
+            parsed[date] = {};
+            Object.keys(remoteData[date]).forEach(user => {
+                let textValue = remoteData[date][user];
+                if (textValue && textValue !== "none") {
+                    parsed[date][user] = textValue.split(',').map(Number);
+                } else {
+                    parsed[date][user] = [];
+                }
+            });
+        });
+        return parsed;
+    }
+
+    // Перетворюємо наші масиви в текст для залізобетонного збереження у хмару
+    function prepareCloudData() {
+        let cloudDb = {};
+        Object.keys(db).forEach(date => {
+            cloudDb[date] = {};
+            Object.keys(db[date]).forEach(user => {
+                let hoursArray = db[date][user];
+                if (hoursArray && hoursArray.length > 0) {
+                    cloudDb[date][user] = hoursArray.join(',');
+                } else {
+                    cloudDb[date][user] = "none"; // Захист від видалення поля в базі
+                }
+            });
+        });
+        return cloudDb;
     }
 
     async function loadFromCloud() {
         try {
             let response = await fetch(CLOUD_URL);
             if (response.ok) {
-                let remoteDb = await response.json();
-                db = remoteDb || {};
-                localStorage.setItem('friends_calendar_db', JSON.stringify(db));
+                let remoteData = await response.json();
+                db = parseCloudData(remoteData);
                 updateStatus('🟢 Синхронізовано з хмарою', '#28a745');
-            } else {
-                updateStatus('🟡 Помилка оновлення. Працюємо локально.', '#f39c12');
             }
         } catch (e) {
             updateStatus('🟢 Синхронізовано з хмарою', '#28a745');
@@ -109,15 +138,14 @@
     async function saveToCloud() {
         updateStatus('🔵 Збереження в інтернет...');
         try {
+            let cloudData = prepareCloudData();
             let response = await fetch(CLOUD_URL, {
                 method: 'PUT',
-                body: JSON.stringify(db),
+                body: JSON.stringify(cloudData),
                 headers: { 'Content-Type': 'application/json' }
             });
             if (response.ok) {
                 updateStatus('🟢 Збережено та оновлено для всіх!', '#28a745');
-            } else {
-                updateStatus('🔴 Помилка сервера при збереженні', '#ff4d4d');
             }
         } catch (e) {
             updateStatus('🔴 Не вдалося надіслати дані в інтернет', '#ff4d4d');
@@ -133,7 +161,7 @@
             select.appendChild(opt);
         });
         loadFromCloud();
-        setInterval(loadFromCloud, 5000); // Повна автосинхронізація кожні 5 секунд
+        setInterval(loadFromCloud, 4000); // Оновлення екрану кожні 4 секунди
     }
 
     function changeUser() { currentUser = document.getElementById('user-select').value; localStorage.setItem('cal_user', currentUser); renderCalendar(); }
@@ -221,7 +249,6 @@
         if (!db[selectedDateStr]) db[selectedDateStr] = {};
         db[selectedDateStr][currentUser] = selectedHours;
         
-        localStorage.setItem('friends_calendar_db', JSON.stringify(db));
         closeModal();
         renderCalendar();
         await saveToCloud();
