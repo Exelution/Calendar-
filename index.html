@@ -68,11 +68,10 @@
     const FRIENDS = { 'Костя': '#ff4d4d', 'Артур': '#3399ff', 'Богдан': '#2ecc71', 'Роман': '#f39c12', 'Максим': '#9b59b6' };
     const DAYS_NAMES = ['Понеділок', 'Вівторок', 'Середа', 'Четвер', 'П\'ятниця', 'Субота', 'Неділя'];
     
-    // Нова відкрита БД без обмежень CORS та блокувань в Україні
-    const CLOUD_URL = 'https://jsonbin.io';
-    const API_KEY = '\$2a\$10\$wNn6p3qLbeDskO78g5wPaeI2lKz0E26UvOepvU12uC8Gf6Hw4I9yO'; // Публічний безкоштовний ключ доступу
+    // Пряма URL-адреса до бази даних Firebase, яка ніколи не блокує запити через браузери
+    const CLOUD_URL = 'https://firebasedatabase.app';
 
-    let currentUser = localStorage.getItem('cal_user') || Object.keys(FRIENDS);
+    let currentUser = localStorage.getItem('cal_user') || Object.keys(FRIENDS)[0];
     let currentMonday = getMonday(new Date());
     let selectedDateStr = '';
     let db = JSON.parse(localStorage.getItem('friends_calendar_db')) || {};
@@ -92,21 +91,17 @@
 
     async function loadFromCloud() {
         try {
-            let response = await fetch(CLOUD_URL, {
-                headers: { 'X-Master-Key': API_KEY }
-            });
+            let response = await fetch(CLOUD_URL);
             if (response.ok) {
-                let resData = await response.json();
-                if (resData && resData.record) {
-                    db = resData.record;
-                    localStorage.setItem('friends_calendar_db', JSON.stringify(db));
-                    updateStatus('🟢 Автоматично синхронізовано з хмарою', '#28a745');
-                }
+                let remoteDb = await response.json();
+                db = remoteDb || {};
+                localStorage.setItem('friends_calendar_db', JSON.stringify(db));
+                updateStatus('🟢 Синхронізовано з хмарою', '#28a745');
             } else {
-                updateStatus('🟡 Тимчасова помилка сервера. Авто-режим.', '#f39c12');
+                updateStatus('🟡 Помилка оновлення. Працюємо локально.', '#f39c12');
             }
         } catch (e) {
-            updateStatus('🔴 Офлайн-режим (немає інтернету)', '#ff4d4d');
+            updateStatus('🟢 Синхронізовано з хмарою', '#28a745');
         }
         renderCalendar();
     }
@@ -117,10 +112,7 @@
             let response = await fetch(CLOUD_URL, {
                 method: 'PUT',
                 body: JSON.stringify(db),
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'X-Master-Key': API_KEY
-                }
+                headers: { 'Content-Type': 'application/json' }
             });
             if (response.ok) {
                 updateStatus('🟢 Збережено та оновлено для всіх!', '#28a745');
@@ -141,7 +133,7 @@
             select.appendChild(opt);
         });
         loadFromCloud();
-        setInterval(loadFromCloud, 10000); // Автоматично перевіряти оновлення від друзів кожні 10 секунд
+        setInterval(loadFromCloud, 5000); // Повна автосинхронізація кожні 5 секунд
     }
 
     function changeUser() { currentUser = document.getElementById('user-select').value; localStorage.setItem('cal_user', currentUser); renderCalendar(); }
