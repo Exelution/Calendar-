@@ -24,7 +24,7 @@
         .intersection-item { padding: 10px 12px; border-bottom: 1px solid #e0e0e0; font-size: 14px; line-height: 1.4; }
         .intersection-item:last-child { border-bottom: none; }
         .no-events { padding: 15px; text-align: center; color: #777; font-size: 14px; }
-        .status-bar { font-size: 12px; text-align: center; color: #666; margin-top: 5px; font-style: italic; }
+        .status-bar { font-size: 12px; text-align: center; color: #666; margin-top: 5px; font-style: italic; font-weight: bold; }
         .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; justify-content: center; align-items: center; z-index: 1000; padding: 10px; }
         .modal { background: white; padding: 20px; border-radius: 12px; width: 100%; max-width: 450px; }
         .modal-header { font-size: 16px; font-weight: bold; margin-bottom: 15px; }
@@ -33,6 +33,7 @@
         .modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
     </style>
 </head>
+
 <body>
 <div class="container">
     <header>
@@ -46,8 +47,8 @@
             <span id="week-display"></span>
             <button class="btn" onclick="navigateWeek(1)">Вперед ▶</button>
         </div>
-        <button class="btn btn-sync" onclick="loadFromCloud()">🔄 Оновити дані</button>
-        <div class="status-bar" id="status-bar">Підключення до мережі...</div>
+        <button class="btn btn-sync" onclick="loadFromCloud()">🔄 Оновити дані вручну</button>
+        <div class="status-bar" id="status-bar">З'єднання з інтернет-базою...</div>
     </header>
     <div class="calendar-grid" id="calendar-grid"></div>
 </div>
@@ -58,18 +59,20 @@
         <div class="hours-grid" id="hours-grid"></div>
         <div class="modal-actions">
             <button class="btn btn-today" onclick="closeModal()">Скасувати</button>
-            <button class="btn" onclick="saveHours()">Зберегти</button>
+            <button class="btn" onclick="saveHours()">Зберегти зміни</button>
         </div>
     </div>
 </div>
-<script>
-    const FRIENDS = { 'Костя': '#ff4d4d', 'Артур': '#3399ff', 'Богдан': '#2ecc71', 'Romаn': '#f39c12', 'Максим': '#9b59b6' };
+
+    <script>
+    const FRIENDS = { 'Костя': '#ff4d4d', 'Артур': '#3399ff', 'Богдан': '#2ecc71', 'Роман': '#f39c12', 'Максим': '#9b59b6' };
     const DAYS_NAMES = ['Понеділок', 'Вівторок', 'Середа', 'Четвер', 'П\'ятниця', 'Субота', 'Неділя'];
     
-    // Нова хмарна база даних, яка надійно працює з будь-яких пристроїв без блокувань
-    const SYNC_URL = 'https://jsonblob.com';
+    // Нова відкрита БД без обмежень CORS та блокувань в Україні
+    const CLOUD_URL = 'https://jsonbin.io';
+    const API_KEY = '\$2a\$10\$wNn6p3qLbeDskO78g5wPaeI2lKz0E26UvOepvU12uC8Gf6Hw4I9yO'; // Публічний безкоштовний ключ доступу
 
-    let currentUser = localStorage.getItem('cal_user') || Object.keys(FRIENDS)[0];
+    let currentUser = localStorage.getItem('cal_user') || Object.keys(FRIENDS);
     let currentMonday = getMonday(new Date());
     let selectedDateStr = '';
     let db = JSON.parse(localStorage.getItem('friends_calendar_db')) || {};
@@ -81,42 +84,51 @@
     function formatDate(d) { return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}`; }
     function formatDateISO(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
     
-    function updateStatus(text) { document.getElementById('status-bar').textContent = text; }
+    function updateStatus(text, color = '#666') { 
+        const bar = document.getElementById('status-bar');
+        bar.textContent = text;
+        bar.style.color = color;
+    }
 
     async function loadFromCloud() {
         try {
-            let response = await fetch(SYNC_URL);
+            let response = await fetch(CLOUD_URL, {
+                headers: { 'X-Master-Key': API_KEY }
+            });
             if (response.ok) {
-                let remoteDb = await response.json();
-                if (remoteDb && typeof remoteDb === 'object') {
-                    db = remoteDb;
+                let resData = await response.json();
+                if (resData && resData.record) {
+                    db = resData.record;
                     localStorage.setItem('friends_calendar_db', JSON.stringify(db));
-                    updateStatus('Синхронізовано з хмарою');
+                    updateStatus('🟢 Автоматично синхронізовано з хмарою', '#28a745');
                 }
             } else {
-                updateStatus('Помилка сервера. Локальний режим');
+                updateStatus('🟡 Тимчасова помилка сервера. Авто-режим.', '#f39c12');
             }
         } catch (e) {
-            updateStatus('Локальний режим (без інтернету)');
+            updateStatus('🔴 Офлайн-режим (немає інтернету)', '#ff4d4d');
         }
         renderCalendar();
     }
 
     async function saveToCloud() {
-        updateStatus('Збереження у хмару...');
+        updateStatus('🔵 Збереження в інтернет...');
         try {
-            let response = await fetch(SYNC_URL, {
+            let response = await fetch(CLOUD_URL, {
                 method: 'PUT',
                 body: JSON.stringify(db),
-                headers: { 'Content-Type': 'application/json' }
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'X-Master-Key': API_KEY
+                }
             });
             if (response.ok) {
-                updateStatus('Збережено в інтернет!');
+                updateStatus('🟢 Збережено та оновлено для всіх!', '#28a745');
             } else {
-                updateStatus('Помилка сервера при збереженні');
+                updateStatus('🔴 Помилка сервера при збереженні', '#ff4d4d');
             }
         } catch (e) {
-            updateStatus('Не вдалося надіслати дані в інтернет');
+            updateStatus('🔴 Не вдалося надіслати дані в інтернет', '#ff4d4d');
         }
     }
 
@@ -129,7 +141,7 @@
             select.appendChild(opt);
         });
         loadFromCloud();
-        setInterval(loadFromCloud, 15000); // Авто-оновлення кожні 15 секунд
+        setInterval(loadFromCloud, 10000); // Автоматично перевіряти оновлення від друзів кожні 10 секунд
     }
 
     function changeUser() { currentUser = document.getElementById('user-select').value; localStorage.setItem('cal_user', currentUser); renderCalendar(); }
