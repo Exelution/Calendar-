@@ -1,0 +1,186 @@
+﻿<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Наш Календар</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
+        body { background-color: #f4f6f9; color: #333; padding: 10px; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+        header { display: flex; flex-direction: column; gap: 12px; border-bottom: 2px solid #eee; padding-bottom: 15px; margin-bottom: 15px; }
+        .user-selector { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: bold; }
+        select { padding: 8px 12px; border-radius: 6px; border: 1px solid #ccc; font-size: 16px; background: #fff; flex-grow: 1; }
+        .navigation { display: flex; align-items: center; justify-content: space-between; gap: 5px; }
+        .btn { padding: 8px 12px; border: none; background-color: #007bff; color: white; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 14px; }
+        .btn-today { background-color: #6c757d; }
+        #week-display { font-size: 14px; font-weight: bold; text-align: center; white-space: nowrap; }
+        .calendar-grid { display: flex; flex-direction: column; gap: 12px; }
+        .day-row { background: #fafafa; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden; cursor: pointer; }
+        .day-label { padding: 12px; font-weight: bold; background: #eceff1; border-bottom: 1px solid #e0e0e0; display: flex; justify-content: space-between; align-items: center; }
+        .day-date { font-size: 12px; color: #666; font-weight: normal; }
+        .intersections-list { display: flex; flex-direction: column; }
+        .intersection-item { padding: 10px 12px; border-bottom: 1px solid #e0e0e0; font-size: 14px; line-height: 1.4; }
+        .intersection-item:last-child { border-bottom: none; }
+        .no-events { padding: 15px; text-align: center; color: #777; font-size: 14px; }
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; justify-content: center; align-items: center; z-index: 1000; padding: 10px; }
+        .modal { background: white; padding: 20px; border-radius: 12px; width: 100%; max-width: 450px; }
+        .modal-header { font-size: 16px; font-weight: bold; margin-bottom: 15px; }
+        .hours-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 20px; max-height: 260px; overflow-y: auto; }
+        .hour-checkbox { display: flex; align-items: center; gap: 6px; padding: 8px; background: #f0f2f5; border-radius: 6px; cursor: pointer; font-size: 13px; }
+        .modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <div class="user-selector">
+            <label for="user-select">Хто ти:</label>
+            <select id="user-select" onchange="changeUser()"></select>
+        </div>
+        <div class="navigation">
+            <button class="btn" onclick="navigateWeek(-1)">◀ Назад</button>
+            <button class="btn btn-today" onclick="goToday()">Сьогодні</button>
+            <span id="week-display"></span>
+            <button class="btn" onclick="navigateWeek(1)">Вперед ▶</button>
+        </div>
+    </header>
+    <div class="calendar-grid" id="calendar-grid"></div>
+</div>
+
+
+<div class="modal-overlay" id="modal-overlay">
+    <div class="modal">
+        <div class="modal-header" id="modal-title"></div>
+        <div class="hours-grid" id="hours-grid"></div>
+        <div class="modal-actions">
+            <button class="btn btn-today" onclick="closeModal()">Скасувати</button>
+            <button class="btn" onclick="saveHours()">Зберегти</button>
+        </div>
+    </div>
+</div>
+
+
+<script>
+    const FRIENDS = { 'Костя': '#ff4d4d', 'Артур': '#3399ff', 'Богдан': '#2ecc71', 'Роман': '#f39c12', 'Максим': '#9b59b6' };
+    const DAYS_NAMES = ['Понеділок', 'Вівторок', 'Середа', 'Четвер', 'П\'ятниця', 'Субота', 'Неділя'];
+    let currentUser = localStorage.getItem('cal_user') || Object.keys(FRIENDS)[0];
+    let currentMonday = getMonday(new Date());
+    let selectedDateStr = '';
+    let db = JSON.parse(localStorage.getItem('friends_calendar_db')) || {};
+
+
+    function getMonday(d) {
+        d = new Date(d); let day = d.getDay(), diff = d.getDate() - day + (day == 0 ? -6 : 1);
+        return new Date(d.setDate(diff));
+    }
+    function formatDate(d) { return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}`; }
+    function formatDateISO(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+    
+    function init() {
+        const select = document.getElementById('user-select');
+        select.innerHTML = '';
+        Object.keys(FRIENDS).forEach(name => {
+            let opt = document.createElement('option'); opt.value = name; opt.textContent = name;
+            if(name === currentUser) opt.selected = true;
+            select.appendChild(opt);
+        });
+        renderCalendar();
+    }
+    function changeUser() { currentUser = document.getElementById('user-select').value; localStorage.setItem('cal_user', currentUser); renderCalendar(); }
+    function navigateWeek(dir) { currentMonday.setDate(currentMonday.getDate() + (dir * 7)); renderCalendar(); }
+    function goToday() { currentMonday = getMonday(new Date()); renderCalendar(); }
+
+
+    function renderCalendar() {
+        const grid = document.getElementById('calendar-grid'); grid.innerHTML = '';
+        let sunday = new Date(currentMonday); sunday.setDate(sunday.getDate() + 6);
+        document.getElementById('week-display').textContent = `${formatDate(currentMonday)} – ${formatDate(sunday)}`;
+
+
+        for (let i = 0; i < 7; i++) {
+            let dayDate = new Date(currentMonday); dayDate.setDate(dayDate.getDate() + i);
+            let dateStr = formatDateISO(dayDate); let dayData = db[dateStr] || {};
+            let row = document.createElement('div'); row.className = 'day-row';
+            row.onclick = () => openModal(dateStr, DAYS_NAMES[i], formatDate(dayDate));
+
+
+            let label = document.createElement('div'); label.className = 'day-label';
+            label.innerHTML = `<span>${DAYS_NAMES[i]}</span><span class="day-date">${formatDate(dayDate)}</span>`;
+            row.appendChild(label);
+
+
+            let list = document.createElement('div'); list.className = 'intersections-list';
+            let intersections = calculateIntersections(dayData);
+
+
+            if (intersections.length === 0) {
+                let noEv = document.createElement('div'); noEv.className = 'no-events'; noEv.textContent = 'Ніхто не вільний'; list.appendChild(noEv);
+            } else {
+                intersections.forEach(item => {
+                    let div = document.createElement('div'); div.className = 'intersection-item';
+                    div.innerHTML = `<strong>${item.start}:00-${item.end}:00:</strong> ${item.people.join(', ')}`;
+                    let count = item.people.length;
+                    if (count === 2) div.style.backgroundColor = 'rgba(255, 77, 77, 0.25)';
+                    else if (count === 3 || count === 4) div.style.backgroundColor = 'rgba(243, 156, 18, 0.25)';
+                    else if (count === 5) div.style.backgroundColor = 'rgba(46, 204, 113, 0.3)';
+                    list.appendChild(div);
+                });
+            }
+            row.appendChild(list); grid.appendChild(row);
+        }
+    }
+
+
+    function calculateIntersections(dayData) {
+        let timeline = [];
+        for (let h = 0; h < 24; h++) {
+            let peopleFree = Object.keys(FRIENDS).filter(name => dayData[name] && dayData[name].includes(h));
+            timeline.push(peopleFree.length >= 2 ? peopleFree : null);
+        }
+        let blocks = []; let start = null; let currentGroup = null;
+        for (let h = 0; h <= 24; h++) {
+            let currentHourPeople = (h < 24) ? timeline[h] : null;
+            let isSameGroup = false;
+            if (currentHourPeople && currentGroup) {
+                isSameGroup = currentHourPeople.length === currentGroup.length && currentHourPeople.every(p => currentGroup.includes(p));
+            }
+            if (start !== null && (!isSameGroup || h === 24)) {
+                blocks.push({ start: start, end: h, people: currentGroup });
+                start = null; currentGroup = null;
+            }
+            if (currentHourPeople && start === null) { start = h; currentGroup = currentHourPeople; }
+        }
+        return blocks;
+    }
+
+
+    function openModal(dateStr, dayName, dateFormatted) {
+        selectedDateStr = dateStr;
+        document.getElementById('modal-title').textContent = `${dayName} (${dateFormatted}) — Вільний час для ${currentUser}`;
+        const grid = document.getElementById('hours-grid'); grid.innerHTML = '';
+        let dayData = db[dateStr] || {}; let myHours = dayData[currentUser] || [];
+        for (let h = 0; h < 24; h++) {
+            let label = document.createElement('label'); label.className = 'hour-checkbox';
+            let cb = document.createElement('input'); cb.type = 'checkbox'; cb.value = h;
+            if (myHours.includes(h)) cb.checked = true;
+            label.appendChild(cb); label.appendChild(document.createTextNode(`${String(h).padStart(2, '0')}:00`));
+            grid.appendChild(label);
+        }
+        document.getElementById('modal-overlay').style.display = 'flex';
+    }
+    function closeModal() { document.getElementById('modal-overlay').style.display = 'none'; }
+    function saveHours() {
+        const checkboxes = document.getElementById('hours-grid').querySelectorAll('input[type="checkbox"]');
+        let selectedHours = [];
+        checkboxes.forEach(cb => { if(cb.checked) selectedHours.push(parseInt(cb.value)); });
+        if (!db[selectedDateStr]) db[selectedDateStr] = {};
+        db[selectedDateStr][currentUser] = selectedHours;
+        localStorage.setItem('friends_calendar_db', JSON.stringify(db));
+        closeModal(); renderCalendar();
+    }
+    document.getElementById('modal-overlay').onclick = function(e) { if(e.target === this) closeModal(); };
+    window.onload = init;
+</script>
+</body>
+</html>
