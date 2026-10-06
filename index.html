@@ -47,7 +47,7 @@
             <button class="btn" onclick="navigateWeek(1)">Вперед ▶</button>
         </div>
         <button class="btn btn-sync" onclick="loadFromCloud()">🔄 Оновити дані</button>
-        <div class="status-bar" id="status-bar">Підключення до хмари...</div>
+        <div class="status-bar" id="status-bar">Підключення до мережі...</div>
     </header>
     <div class="calendar-grid" id="calendar-grid"></div>
 </div>
@@ -63,11 +63,11 @@
     </div>
 </div>
 <script>
-    const FRIENDS = { 'Костя': '#ff4d4d', 'Артур': '#3399ff', 'Богдан': '#2ecc71', 'Роман': '#f39c12', 'Максим': '#9b59b6' };
+    const FRIENDS = { 'Костя': '#ff4d4d', 'Артур': '#3399ff', 'Богдан': '#2ecc71', 'Romаn': '#f39c12', 'Максим': '#9b59b6' };
     const DAYS_NAMES = ['Понеділок', 'Вівторок', 'Середа', 'Четвер', 'П\'ятниця', 'Субота', 'Неділя'];
     
-    // Нова надійна безкоштовна база даних (захищена від блокувань і змішаного контенту на GitHub)
-    const CLOUD_URL = 'https://restful-api.dev';
+    // Нова хмарна база даних, яка надійно працює з будь-яких пристроїв без блокувань
+    const SYNC_URL = 'https://jsonblob.com';
 
     let currentUser = localStorage.getItem('cal_user') || Object.keys(FRIENDS)[0];
     let currentMonday = getMonday(new Date());
@@ -85,34 +85,38 @@
 
     async function loadFromCloud() {
         try {
-            let response = await fetch(CLOUD_URL);
+            let response = await fetch(SYNC_URL);
             if (response.ok) {
-                let resData = await response.json();
-                if (resData && resData.data && resData.data.calendar) {
-                    db = resData.data.calendar;
+                let remoteDb = await response.json();
+                if (remoteDb && typeof remoteDb === 'object') {
+                    db = remoteDb;
                     localStorage.setItem('friends_calendar_db', JSON.stringify(db));
                     updateStatus('Синхронізовано з хмарою');
                 }
             } else {
-                updateStatus('Хмара порожня. Працюємо локально');
+                updateStatus('Помилка сервера. Локальний режим');
             }
         } catch (e) {
-            updateStatus('Режим офлайн (локальні дані)');
+            updateStatus('Локальний режим (без інтернету)');
         }
         renderCalendar();
     }
 
     async function saveToCloud() {
-        updateStatus('Збереження...');
+        updateStatus('Збереження у хмару...');
         try {
-            await fetch(CLOUD_URL, {
+            let response = await fetch(SYNC_URL, {
                 method: 'PUT',
-                body: JSON.stringify({ name: "Хмарний Календар Хлопців", data: { calendar: db } }),
+                body: JSON.stringify(db),
                 headers: { 'Content-Type': 'application/json' }
             });
-            updateStatus('Збережено в інтернет!');
+            if (response.ok) {
+                updateStatus('Збережено в інтернет!');
+            } else {
+                updateStatus('Помилка сервера при збереженні');
+            }
         } catch (e) {
-            updateStatus('Помилка мережі. Збережено лише на телефоні');
+            updateStatus('Не вдалося надіслати дані в інтернет');
         }
     }
 
@@ -125,7 +129,7 @@
             select.appendChild(opt);
         });
         loadFromCloud();
-        setInterval(loadFromCloud, 20000);
+        setInterval(loadFromCloud, 15000); // Авто-оновлення кожні 15 секунд
     }
 
     function changeUser() { currentUser = document.getElementById('user-select').value; localStorage.setItem('cal_user', currentUser); renderCalendar(); }
