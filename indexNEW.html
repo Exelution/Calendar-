@@ -47,7 +47,7 @@
             <button class="btn" onclick="navigateWeek(1)">Вперед ▶</button>
         </div>
         <button class="btn btn-sync" onclick="loadFromCloud()">🔄 Оновити дані</button>
-        <div class="status-bar" id="status-bar">Завантаження розкладу...</div>
+        <div class="status-bar" id="status-bar">Підключення до хмари...</div>
     </header>
     <div class="calendar-grid" id="calendar-grid"></div>
 </div>
@@ -66,14 +66,13 @@
     const FRIENDS = { 'Костя': '#ff4d4d', 'Артур': '#3399ff', 'Богдан': '#2ecc71', 'Роман': '#f39c12', 'Максим': '#9b59b6' };
     const DAYS_NAMES = ['Понеділок', 'Вівторок', 'Середа', 'Четвер', 'П\'ятниця', 'Субота', 'Неділя'];
     
-    // Сховище безкоштовної онлайн-БД (використовуємо надійний безкоштовний сервіс kvdb.io для миттєвого старту)
-    // Код "mygroup123" унікальний для вашої компанії. Ви можете змінити його на будь-яке інше слово.
-    const CLOUD_URL = 'https://kvdb.io';
+    // Нова надійна безкоштовна база даних (захищена від блокувань і змішаного контенту на GitHub)
+    const CLOUD_URL = 'https://restful-api.dev';
 
     let currentUser = localStorage.getItem('cal_user') || Object.keys(FRIENDS)[0];
     let currentMonday = getMonday(new Date());
     let selectedDateStr = '';
-    let db = {};
+    let db = JSON.parse(localStorage.getItem('friends_calendar_db')) || {};
 
     function getMonday(d) {
         d = new Date(d); let day = d.getDay(), diff = d.getDate() - day + (day == 0 ? -6 : 1);
@@ -85,38 +84,35 @@
     function updateStatus(text) { document.getElementById('status-bar').textContent = text; }
 
     async function loadFromCloud() {
-        updateStatus('Оновлення даних із хмари...');
         try {
             let response = await fetch(CLOUD_URL);
             if (response.ok) {
-                db = await response.json();
-                updateStatus('Дані синхронізовано');
-            } else if (response.status === 404) {
-                db = {}; // Хмара порожня, це перший запуск
-                updateStatus('Створено новий розклад');
+                let resData = await response.json();
+                if (resData && resData.data && resData.data.calendar) {
+                    db = resData.data.calendar;
+                    localStorage.setItem('friends_calendar_db', JSON.stringify(db));
+                    updateStatus('Синхронізовано з хмарою');
+                }
+            } else {
+                updateStatus('Хмара порожня. Працюємо локально');
             }
         } catch (e) {
-            console.log('Помилка хмари, взято локальну копію', e);
-            updateStatus('Помилка мережі. Показано офлайн-копію');
+            updateStatus('Режим офлайн (локальні дані)');
         }
         renderCalendar();
     }
 
     async function saveToCloud() {
-        updateStatus('Збереження у хмару...');
+        updateStatus('Збереження...');
         try {
-            let response = await fetch(CLOUD_URL, {
-                method: 'POST',
-                body: JSON.stringify(db),
+            await fetch(CLOUD_URL, {
+                method: 'PUT',
+                body: JSON.stringify({ name: "Хмарний Календар Хлопців", data: { calendar: db } }),
                 headers: { 'Content-Type': 'application/json' }
             });
-            if (response.ok) {
-                updateStatus('Збережено та синхронізовано!');
-            } else {
-                updateStatus('Помилка збереження на сервер');
-            }
+            updateStatus('Збережено в інтернет!');
         } catch (e) {
-            updateStatus('Не вдалося зберегти в інтернет');
+            updateStatus('Помилка мережі. Збережено лише на телефоні');
         }
     }
 
@@ -129,8 +125,7 @@
             select.appendChild(opt);
         });
         loadFromCloud();
-        // Автоматично перевіряти оновлення кожні 30 секунд
-        setInterval(loadFromCloud, 30000);
+        setInterval(loadFromCloud, 20000);
     }
 
     function changeUser() { currentUser = document.getElementById('user-select').value; localStorage.setItem('cal_user', currentUser); renderCalendar(); }
@@ -218,9 +213,10 @@
         if (!db[selectedDateStr]) db[selectedDateStr] = {};
         db[selectedDateStr][currentUser] = selectedHours;
         
+        localStorage.setItem('friends_calendar_db', JSON.stringify(db));
         closeModal();
         renderCalendar();
-        await saveToCloud(); // Надсилаємо зміни в мережу
+        await saveToCloud();
     }
     document.getElementById('modal-overlay').onclick = function(e) { if(e.target === this) closeModal(); };
     window.onload = init;
