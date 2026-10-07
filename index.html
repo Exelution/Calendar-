@@ -70,7 +70,7 @@
     // ВСТАВТЕ СВОЇ ДАНІ З JSONBIN.IO СЮДИ:
     const BIN_ID = '6ac6c978ac6210605a1dc974 '; 
     const MASTER_KEY = '$2a$10$0DckOuqSYdhx4IbFB8VGI.PrfkjwtU/W3EO1ei16MruskFnlY5F6q';
-    const CLOUD_URL = `https://jsonbin.io{BIN_ID}`;
+    const CLOUD_URL = `https://jsonbin.io\${BIN_ID}{BIN_ID}`;
 
     let currentUser = localStorage.getItem('cal_user') || Object.keys(FRIENDS)[0];
     let currentMonday = getMonday(new Date());
