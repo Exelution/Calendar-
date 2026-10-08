@@ -321,9 +321,26 @@
     function closeModal() { document.getElementById('modal-overlay').style.display = 'none'; isModalOpen = false; }
 
     function saveHours() {
+        // Перевіряємо та створюємо порожній об'єкт дня, якщо його ще немає в базі
+        if (!db[selectedDateStr] || typeof db[selectedDateStr] !== 'object') {
+            db[selectedDateStr] = {};
+        }
+        
+        // Записуємо обраний інтервал годин зайнятості для користувача
         db[selectedDateStr][currentUser] = convertRangeToHoursArray('day_modal_start', 'day_modal_end');
-        closeModal(); saveToCloud();
+        
+        // Якщо користувач вибрав "Вільний", видаляємо порожні записи, щоб не смітити в базі
+        if (db[selectedDateStr][currentUser].length === 0) {
+            delete db[selectedDateStr][currentUser];
+            if (Object.keys(db[selectedDateStr]).length === 0) {
+                delete db[selectedDateStr];
+            }
+        }
+        
+        closeModal(); 
+        saveToCloud();
     }
+
 
     function saveScheduleConfig() {
         const type = document.getElementById('cfg-type').value;
@@ -345,7 +362,7 @@
         closeModal(); saveToCloud();
     }
 
-    function renderCalendar() {
+        function renderCalendar() {
         const grid = document.getElementById('calendar-grid'); grid.innerHTML = '';
         let sunday = new Date(currentMonday); sunday.setDate(sunday.getDate() + 6);
         document.getElementById('week-display').textContent = `${formatDate(currentMonday)} – ${formatDate(sunday)}`;
@@ -365,7 +382,8 @@
             let list = document.createElement('div'); list.className = 'intersections-list';
             let totalAvailableHoursCount = 0;
 
-            for (let h = 0; h < 24; h++) {
+            // ЗДЕСЬ ИЗМЕНЕНО: цикл теперь начинается с 6 часов утра и идет до 23:00 включительно
+            for (let h = 6; h < 24; h++) {
                 let hourStr = `${String(h).padStart(2, '0')}:00`;
                 let freeFriends = [];
 
@@ -389,6 +407,7 @@
             tempDate.setDate(tempDate.getDate() + 1);
         }
     }
+
 </script>
 </body>
 </html>
