@@ -10,11 +10,13 @@
         .container { max-width: 800px; margin: 0 auto; background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
         header { display: flex; flex-direction: column; gap: 12px; border-bottom: 2px solid #eee; padding-bottom: 15px; margin-bottom: 15px; }
         .user-selector { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: bold; }
-        select { padding: 8px 12px; border-radius: 6px; border: 1px solid #ccc; font-size: 16px; background: #fff; flex-grow: 1; }
+        select, input[type="date"] { padding: 8px 12px; border-radius: 6px; border: 1px solid #ccc; font-size: 15px; background: #fff; width: 100%; }
+        .user-selector select { flex-grow: 1; width: auto; }
         .navigation { display: flex; align-items: center; justify-content: space-between; gap: 5px; }
         .btn { padding: 8px 12px; border: none; background-color: #007bff; color: white; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 14px; }
         .btn-today { background-color: #6c757d; }
         .btn-sync { background-color: #28a745; }
+        .btn-template { background-color: #17a2b8; }
         #week-display { font-size: 14px; font-weight: bold; text-align: center; white-space: nowrap; }
         .calendar-grid { display: flex; flex-direction: column; gap: 12px; }
         .day-row { background: #fafafa; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden; cursor: pointer; }
@@ -23,15 +25,18 @@
         .intersections-list { display: flex; flex-direction: column; }
         .intersection-item { padding: 10px 12px; border-bottom: 1px solid #e0e0e0; font-size: 14px; line-height: 1.4; }
         .intersection-item:last-child { border-bottom: none; }
-        .no-events { padding: 15px; text-align: center; color: #777; font-size: 14px; }
+        .no-events { padding: 15px; text-align: center; color: #d9534f; font-size: 14px; font-weight: bold; background: #fdf2f2; }
         .status-bar { font-size: 12px; text-align: center; color: #666; margin-top: 5px; font-style: italic; font-weight: bold; }
         .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; justify-content: center; align-items: center; z-index: 1000; padding: 10px; }
-        .modal { background: white; padding: 20px; border-radius: 12px; width: 100%; max-width: 450px; }
-        .modal-header { font-size: 16px; font-weight: bold; margin-bottom: 15px; }
-        .hours-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 20px; max-height: 260px; overflow-y: auto; }
-        .hour-checkbox { display: flex; align-items: center; gap: 6px; padding: 8px; background: #f0f2f5; border-radius: 6px; cursor: pointer; font-size: 13px; }
-        .modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
+        .modal { background: white; padding: 20px; border-radius: 12px; width: 100%; max-width: 480px; max-height: 90vh; overflow-y: auto; }
+        .modal-header { font-size: 16px; font-weight: bold; margin-bottom: 5px; }
+        .modal-desc { font-size: 13px; color: #ff4d4d; margin-bottom: 15px; font-weight: 600; }
+        .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
         .badge { padding: 2px 6px; border-radius: 4px; color: white; font-size: 11px; font-weight: bold; margin-left: 5px; display: inline-block; }
+        .config-section { border: 1px solid #ddd; padding: 12px; border-radius: 8px; margin-bottom: 15px; background: #fdfdfd; }
+        .config-title { font-weight: bold; font-size: 14px; margin-bottom: 8px; color: #007bff; }
+        .form-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; font-size: 13px; }
+        .time-range-selects { display: flex; align-items: center; gap: 8px; }
     </style>
 </head>
 <body onload="init()">
@@ -47,7 +52,10 @@
             <span id="week-display"></span>
             <button class="btn" onclick="navigateWeek(1)">Вперед ▶</button>
         </div>
-        <button class="btn btn-sync" onclick="loadFromCloud()">🔄 Оновити</button>
+        <div style="display: flex; gap: 10px; width: 100%;">
+            <button class="btn btn-sync" style="flex: 1;" onclick="loadFromCloud()">🔄 Оновити дані</button>
+            <button class="btn btn-template" style="flex: 1;" onclick="openTemplateModal()">⚙️ Мій графік/шаблон</button>
+        </div>
         <div class="status-bar" id="status-bar">Синхронізація...</div>
     </header>
     <div class="calendar-grid" id="calendar-grid"></div>
@@ -56,10 +64,11 @@
 <div class="modal-overlay" id="modal-overlay">
     <div class="modal">
         <div class="modal-header" id="modal-title"></div>
-        <div class="hours-grid" id="hours-grid"></div>
+        <div class="modal-desc" id="modal-desc">Вкажіть проміжок часу, коли ви ЗАЙНЯТІ ⛔</div>
+        <div id="hours-grid"></div>
         <div class="modal-actions">
             <button class="btn btn-today" onclick="closeModal()">Скасувати</button>
-            <button class="btn" onclick="saveHours()">Зберегти зміни</button>
+            <button class="btn" id="modal-save-btn" onclick="saveHours()">Зберегти зміни</button>
         </div>
     </div>
 </div>
@@ -67,16 +76,16 @@
     const FRIENDS = { 'Костя': '#ff4d4d', 'Артур': '#3399ff', 'Богдан': '#2ecc71', 'Роман': '#f39c12', 'Максим': '#9b59b6' };
     const DAYS_NAMES = ['Понеділок', 'Вівторок', 'Середа', 'Четвер', 'П\'ятниця', 'Субота', 'Неділя'];
     
-    // ВСТАВТЕ СВОЇ ДАНІ З JSONBIN.IO СЮДИ:
+
+// ВСТАВТЕ СВОЇ ДАНІ З JSONBIN.IO СЮДИ:
     const BIN_ID = '6ac6c978ac6210605a1dc974'; 
     const MASTER_KEY = '$2a$10$0DckOuqSYdhx4IbFB8VGI.PrfkjwtU/W3EO1ei16MruskFnlY5F6q';
     const CLOUD_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
-    
-  
 
     let currentUser = localStorage.getItem('cal_user') || Object.keys(FRIENDS)[0];
     let currentMonday = getMonday(new Date());
     let selectedDateStr = '';
+    let selectedDayIndex = 0;
     let db = {};
     let isModalOpen = false;
 
@@ -102,17 +111,15 @@
             if (response.ok) {
                 let resData = await response.json();
                 db = resData.record || {};
+                if (!db._templates) db._templates = {}; 
+                if (!db._schedules) db._schedules = {}; 
                 updateStatus('🟢 Онлайн (синхронізовано)', '#28a745');
                 renderCalendar();
-            } else {
-                updateStatus('🟡 Помилка зчитування бази', '#f39c12');
-            }
-        } catch (e) {
-            updateStatus('🔴 Немає зв\'язку з інтернетом', '#ff4d4d');
-        }
+            } else { updateStatus('🟡 Помилка зчитування бази', '#f39c12'); }
+        } catch (e) { updateStatus('🔴 Немає зв\'язку з інтернетом', '#ff4d4d'); }
     }
 
-     async function saveToCloud() {
+    async function saveToCloud() {
         updateStatus('🔵 Збереження в інтернет...');
         try {
             let response = await fetch(CLOUD_URL, {
@@ -121,27 +128,19 @@
                 headers: { 'Content-Type': 'application/json', 'X-Master-Key': MASTER_KEY }
             });
             if (response.ok) {
-                updateStatus('🟢 Збережено для всіх хлопців!', '#28a745');
-                // Видаляємо renderCalendar() і замість нього робимо свіжий запит:
-                await loadFromCloud(); 
-            } else {
-                updateStatus('🔴 Помилка збереження на сервері', '#ff4d4d');
-            }
-        } catch (e) {
-            updateStatus('🔴 Помилка мережі при надсиланні', '#ff4d4d');
-        }
+                updateStatus('🟢 Успішно збережено для всіх!', '#28a745');
+                await loadFromCloud();
+            } else { updateStatus('🔴 Помилка збереження на сервері', '#ff4d4d'); }
+        } catch (e) { updateStatus('🔴 Помилка мережі при надсиланні', '#ff4d4d'); }
     }
-  function init() {
-        const select = document.getElementById('user-select');
-        select.innerHTML = '';
+    function init() {
+        const select = document.getElementById('user-select'); select.innerHTML = '';
         Object.keys(FRIENDS).forEach(name => {
             let opt = document.createElement('option'); opt.value = name; opt.textContent = name;
             if(name === currentUser) opt.selected = true;
             select.appendChild(opt);
         });
-        loadFromCloud(); // Завантажуємо дані лише один раз при відкритті сайту
-        
-        // РЯДОК З setInterval(loadFromCloud, 5000); ПОВНІСТЮ ВИДАЛЕНО
+        loadFromCloud();
     }
 
     function changeUser() { 
@@ -152,36 +151,196 @@
     function navigateWeek(dir) { currentMonday.setDate(currentMonday.getDate() + (dir * 7)); renderCalendar(); }
     function goToday() { currentMonday = getMonday(new Date()); renderCalendar(); }
 
-    function openModal(dateStr, dayName) {
-        selectedDateStr = dateStr; isModalOpen = true;
-        document.getElementById('modal-title').textContent = `${dayName} (${dateStr})`;
-        const grid = document.getElementById('hours-grid'); grid.innerHTML = '';
-        let userHours = (db[dateStr] && db[dateStr][currentUser]) || [];
-
-        for(let h = 0; h < 24; h++) {
-            let hourStr = `${String(h).padStart(2, '0')}:00`;
-            let label = document.createElement('label'); label.className = 'hour-checkbox';
-            let cb = document.createElement('input'); cb.type = 'checkbox'; cb.value = hourStr;
-            if(userHours.includes(hourStr)) cb.checked = true;
-            label.appendChild(cb); label.appendChild(document.createTextNode(hourStr));
-            grid.appendChild(label);
+    function makeTimeOptions(selectedTime, isEnd = false) {
+        let html = isEnd ? `<option value="none" ${selectedTime==='none'?'selected':''}>Не зайнятий / Вільний</option>` : '';
+        for(let h=0; h<24; h++) {
+            let hStr = `${String(h).padStart(2,'0')}:00`;
+            html += `<option value="${hStr}" ${selectedTime===hStr?'selected':''}>${hStr}</option>`;
         }
+        return html;
+    }
+
+    function generateRangeSelectorHtml(prefix, labelText, defaultStart = '09:00', defaultEnd = '18:00') {
+        return `
+            <div class="form-group">
+                <label>${labelText}</label>
+                <div class="time-range-selects">
+                    <select id="${prefix}_start">${makeTimeOptions(defaultStart)}</select>
+                    <span>до</span>
+                    <select id="${prefix}_end">${makeTimeOptions(defaultEnd, true)}</select>
+                </div>
+            </div>
+        `;
+    }
+
+    function getStartEndFromHoursArray(hours) {
+        if (!hours || hours.length === 0) return { start: '00:00', end: 'none' };
+        let sorted = [...hours].sort();
+        let start = sorted[0];
+        let lastHour = parseInt(sorted[sorted.length - 1].split(':')[0]);
+        let end = `${String((lastHour + 1) % 24).padStart(2, '0')}:00`;
+        return { start: start, end: end };
+    }
+
+    function convertRangeToHoursArray(startId, endId) {
+        let startStr = document.getElementById(startId).value;
+        let endStr = document.getElementById(endId).value;
+        if (endStr === 'none') return [];
+        
+        let start = parseInt(startStr.split(':')[0]);
+        let end = parseInt(endStr.split(':')[0]);
+        let hours = [];
+        
+        if (start < end) {
+            for (let h = start; h < end; h++) hours.push(`${String(h).padStart(2,'0')}:00`);
+        } else if (start > end) { // Нічна зміна з переходом через 00:00
+            for (let h = start; h < 24; h++) hours.push(`${String(h).padStart(2,'0')}:00`);
+            for (let h = 0; h < end; h++) hours.push(`${String(h).padStart(2,'0')}:00`);
+        } else {
+            hours.push(`${String(start).padStart(2,'0')}:00`); // Якщо старт і енд рівні — зайнята 1 година
+        }
+        return hours;
+    }
+
+    function openModal(dateStr, dayName, dayIndex) {
+        selectedDateStr = dateStr; selectedDayIndex = dayIndex; isModalOpen = true;
+        document.getElementById('modal-title').textContent = `${dayName} (${formatDate(new Date(dateStr))})`;
+        document.getElementById('modal-desc').textContent = 'Вкажіть проміжок часу, коли ви ЗАЙНЯТІ ⛔';
+        document.getElementById('modal-save-btn').onclick = saveHours;
+
+        let busyHours = getBusyHoursForDay(dateStr, dayIndex);
+        let range = getStartEndFromHoursArray(busyHours);
+        
+        const container = document.getElementById('hours-grid');
+        container.innerHTML = generateRangeSelectorHtml('day_modal', 'Період моєї зайнятості:', range.start, range.end);
         document.getElementById('modal-overlay').style.display = 'flex';
+    }
+
+    function openTemplateModal() {
+        isModalOpen = true;
+        document.getElementById('modal-title').textContent = `Налаштування мого графіка`;
+        document.getElementById('modal-desc').textContent = 'Вкажіть робочі години швидким вибором «Від і До»';
+        
+        const container = document.getElementById('hours-grid'); container.innerHTML = '';
+        let config = (db._schedules && db._schedules[currentUser]) || { type: 'week', start: '', dayWork: [], nightWork: [] };
+        
+        let html = `
+            <div class="config-section">
+                <div class="config-title">⚙️ Режим вашої роботи:</div>
+                <div class="form-group">
+                    <label>Оберіть тип графіка:</label>
+                    <select id="cfg-type" onchange="toggleConfigFields()">
+                        <option value="week" ${config.type==='week'?'selected':''}>Стандартний (По днях тижня)</option>
+                        <option value="2-2" ${config.type==='2-2'?'selected':''}>Циклічний 2 через 2</option>
+                        <option value="3-day" ${config.type==='3-day'?'selected':''}>День / Ніч / Вихідний (Кожен 3-й день)</option>
+                    </select>
+                </div>
+                <div class="form-group" id="field-start-date" style="display:none;">
+                    <label id="start-date-label">Дата першої зміни:</label>
+                    <input type="date" id="cfg-start" value="${config.start || ''}">
+                </div>
+            </div>
+            <div id="setup-area"></div>
+        `;
+        container.innerHTML = html;
+        toggleConfigFields();
+        document.getElementById('modal-save-btn').onclick = saveScheduleConfig;
+        document.getElementById('modal-overlay').style.display = 'flex';
+    }
+
+    function toggleConfigFields() {
+        const type = document.getElementById('cfg-type').value;
+        const startField = document.getElementById('field-start-date');
+        const dateLabel = document.getElementById('start-date-label');
+        const area = document.getElementById('setup-area');
+        area.innerHTML = '';
+
+        let config = (db._schedules && db._schedules[currentUser]) || {};
+        let dayRange = getStartEndFromHoursArray(config.dayWork || ['06:00','07:00','08:00','09:00','10:00','11:00','12:00','13:00','14:00','15:00']);
+        let nightRange = getStartEndFromHoursArray(config.nightWork || ['15:00','16:00','17:00','18:00','19:00','20:00','21:00','22:00','23:00']);
+
+        if (type === 'week') {
+            startField.style.display = 'none';
+            let userTemplates = db._templates[currentUser] || {};
+            DAYS_NAMES.forEach((dayName, idx) => {
+                let tRange = getStartEndFromHoursArray(userTemplates[idx]);
+                let div = document.createElement('div');
+                div.innerHTML = generateRangeSelectorHtml(`week_${idx}`, `${dayName}:`, tRange.start, tRange.end);
+                area.appendChild(div);
+            });
+        } else {
+            startField.style.display = 'flex';
+            if (type === '2-2') {
+                dateLabel.textContent = 'Дата першого робочого дня:';
+                area.innerHTML = generateRangeSelectorHtml('cycle_day', 'Зайнятість у робочий день:', dayRange.start, dayRange.end);
+            } else if (type === '3-day') {
+                dateLabel.textContent = 'Дата першої ДЕННОЇ зміни:';
+                area.innerHTML = generateRangeSelectorHtml('cycle_day', 'Зайнятість у ДЕННУ зміну (День 1):', '06:00', '15:00');
+                area.innerHTML += generateRangeSelectorHtml('cycle_night', 'Зайнятість у НІЧНУ зміну (День 2):', '15:00', '23:00');
+            }
+        }
+    }
+    function getBusyHoursForDay(dateStr, dayIndex) {
+        if (db[dateStr] && db[dateStr][currentUser]) return db[dateStr][currentUser];
+        let config = db._schedules && db._schedules[currentUser];
+        if (!config || config.type === 'week') return (db._templates && db._templates[currentUser] && db._templates[currentUser][dayIndex]) || [];
+        if (!config.start) return [];
+        let start = new Date(config.start); start.setHours(0,0,0,0);
+        let current = new Date(dateStr); current.setHours(0,0,0,0);
+        let diffDays = Math.floor((current.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+        if (diffDays < 0) return [];
+        if (config.type === '2-2') {
+            let mod = diffDays % 4; if (mod === 0 || mod === 1) return config.dayWork || [];
+        } else if (config.type === '3-day') {
+            let mod = diffDays % 3;
+            if (mod === 0) return config.dayWork || [];
+            if (mod === 1) return config.nightWork || [];
+        }
+        return [];
+    }
+
+    function getFriendBusyHours(friend, dateISO, dayIdx) {
+        if (db[dateISO] && db[dateISO][friend]) return db[dateISO][friend];
+        let config = db._schedules && db._schedules[friend];
+        if (!config || config.type === 'week') return (db._templates && db._templates[friend] && db._templates[friend][dayIdx]) || [];
+        if (!config.start) return [];
+        let start = new Date(config.start); start.setHours(0,0,0,0);
+        let current = new Date(dateISO); current.setHours(0,0,0,0);
+        let diffDays = Math.floor((current.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+        if (diffDays < 0) return [];
+        if (config.type === '2-2') {
+            let mod = diffDays % 4; if (mod === 0 || mod === 1) return config.dayWork || [];
+        } else if (config.type === '3-day') {
+            let mod = diffDays % 3;
+            if (mod === 0) return config.dayWork || [];
+            if (mod === 1) return config.nightWork || [];
+        }
+        return [];
     }
 
     function closeModal() { document.getElementById('modal-overlay').style.display = 'none'; isModalOpen = false; }
 
     function saveHours() {
-        const grid = document.getElementById('hours-grid');
-        const checkboxes = grid.querySelectorAll('input[type="checkbox"]');
-        let selectedHours = [];
-        checkboxes.forEach(cb => { if(cb.checked) selectedHours.push(cb.value); });
+        db[selectedDateStr][currentUser] = convertRangeToHoursArray('day_modal_start', 'day_modal_end');
+        closeModal(); saveToCloud();
+    }
 
-        if(!db[selectedDateStr]) db[selectedDateStr] = {};
-        if(selectedHours.length > 0) { db[selectedDateStr][currentUser] = selectedHours; } 
-        else {
-            delete db[selectedDateStr][currentUser];
-            if(Object.keys(db[selectedDateStr]).length === 0) delete db[selectedDateStr];
+    function saveScheduleConfig() {
+        const type = document.getElementById('cfg-type').value;
+        const start = document.getElementById('cfg-start') ? document.getElementById('cfg-start').value : '';
+        if(!db._schedules) db._schedules = {};
+        db._schedules[currentUser] = { type: type, start: start, dayWork: [], nightWork: [] };
+
+        if (type === 'week') {
+            if(!db._templates) db._templates = {}; db._templates[currentUser] = {};
+            DAYS_NAMES.forEach((_, idx) => {
+                db._templates[currentUser][idx] = convertRangeToHoursArray(`week_${idx}_start`, `week_${idx}_end`);
+            });
+        } else {
+            db._schedules[currentUser].dayWork = convertRangeToHoursArray('cycle_day_start', 'cycle_day_end');
+            if (type === '3-day') {
+                db._schedules[currentUser].nightWork = convertRangeToHoursArray('cycle_night_start', 'cycle_night_end');
+            }
         }
         closeModal(); saveToCloud();
     }
@@ -193,30 +352,38 @@
         let tempDate = new Date(currentMonday);
 
         for (let i = 0; i < 7; i++) {
-            let dateISO = formatDateISO(tempDate), dateDisplay = formatDate(tempDate), dayName = DAYS_NAMES[i];
+            let dateISO = formatDateISO(tempDate), dayName = DAYS_NAMES[i];
             let row = document.createElement('div'); row.className = 'day-row';
-            row.onclick = (function(dIso, dName) { return function() { openModal(dIso, dName); }; })(dateISO, dayName);
+            row.onclick = (function(dIso, dName, dIdx) { 
+                return function(e) { if(e.target.closest('.day-row')) openModal(dIso, dName, dIdx); }; 
+            })(dateISO, dayName, i);
 
             let label = document.createElement('div'); label.className = 'day-label';
-            label.innerHTML = `${dayName} <span class="day-date">${dateDisplay}</span>`;
+            label.innerHTML = `${dayName} <span class="day-date">${formatDate(tempDate)}</span>`;
             row.appendChild(label);
 
             let list = document.createElement('div'); list.className = 'intersections-list';
-            let dayData = db[dateISO] || {}, hoursMap = {};
+            let totalAvailableHoursCount = 0;
 
-            Object.keys(dayData).forEach(user => {
-                dayData[user].forEach(h => { if(!hoursMap[h]) hoursMap[h] = []; hoursMap[h].push(user); });
-            });
+            for (let h = 0; h < 24; h++) {
+                let hourStr = `${String(h).padStart(2, '0')}:00`;
+                let freeFriends = [];
 
-            let sortedHours = Object.keys(hoursMap).sort();
-            if(sortedHours.length === 0) { list.innerHTML = `<div class="no-events">Немає запланованого часу</div>`; } 
-            else {
-                sortedHours.forEach(h => {
-                    let users = hoursMap[h], item = document.createElement('div');
-                    item.className = 'intersection-item'; item.innerHTML = `<strong>${h}</strong> — `;
-                    users.forEach(u => { item.innerHTML += `<span class="badge" style="background:${FRIENDS[u]||'#6c757d'}">${u}</span>`; });
-                    list.appendChild(item);
+                Object.keys(FRIENDS).forEach(friend => {
+                    let friendBusyHours = getFriendBusyHours(friend, dateISO, i);
+                    if (!friendBusyHours.includes(hourStr)) freeFriends.push(friend);
                 });
+
+                if (freeFriends.length > 0 && freeFriends.length < Object.keys(FRIENDS).length + 1) {
+                    totalAvailableHoursCount++;
+                    let item = document.createElement('div'); item.className = 'intersection-item';
+                    item.innerHTML = `<strong>${hourStr}</strong> — Вільні: `;
+                    freeFriends.forEach(u => { item.innerHTML += `<span class="badge" style="background:${FRIENDS[u]}">${u}</span>`; });
+                    list.appendChild(item);
+                }
+            }
+            if (totalAvailableHoursCount === 0) {
+                list.innerHTML = `<div class="no-events">❌ Спільний час відсутній (всі зайняті)</div>`;
             }
             row.appendChild(list); grid.appendChild(row);
             tempDate.setDate(tempDate.getDate() + 1);
@@ -225,3 +392,5 @@
 </script>
 </body>
 </html>
+
+
